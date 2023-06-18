@@ -1,11 +1,25 @@
 package course.concurrency.m2_async.cf.min_price;
 
 import java.util.Collection;
+import java.util.NavigableSet;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class PriceAggregator {
 
     private PriceRetriever priceRetriever = new PriceRetriever();
+
+    /*
+     * C ForkJoinPool.commonPool() тесты падают.
+     * Добавил cached, так как неизвестно сколько магазинов будет на входе, так как нагрузка в основновном блокирующая
+     */
+    private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     public void setPriceRetriever(PriceRetriever priceRetriever) {
         this.priceRetriever = priceRetriever;
@@ -18,7 +32,33 @@ public class PriceAggregator {
     }
 
     public double getMinPrice(long itemId) {
-        // place for your code
-        return 0;
+        Double result = Double.NaN;
+        NavigableSet<Double> minPriceSorted = new ConcurrentSkipListSet<>();
+
+        shopIds.forEach(shopId ->
+                CompletableFuture
+                        .runAsync(
+                                () -> minPriceSorted.add(priceRetriever.getPrice(itemId, shopId)),
+                                executorService
+                        )
+        );
+
+        try {
+            CompletableFuture
+                    .runAsync(() -> {
+                        while (minPriceSorted.size() < shopIds.size()) {
+                            //просто ждем, когда получим цены со всех магазинов
+                        }
+                    })
+                    .get(2950, TimeUnit.MILLISECONDS);
+            result = minPriceSorted.first();
+        } catch (TimeoutException e) {
+            if (!minPriceSorted.isEmpty())
+                result = minPriceSorted.first();
+        } catch (ExecutionException | InterruptedException e) {
+            //
+        }
+
+        return result;
     }
 }
