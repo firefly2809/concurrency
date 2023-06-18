@@ -1,15 +1,15 @@
 package course.concurrency.m2_async.cf.min_price;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.NavigableSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 public class PriceAggregator {
 
@@ -35,29 +35,25 @@ public class PriceAggregator {
         Double result = Double.NaN;
         NavigableSet<Double> minPriceSorted = new ConcurrentSkipListSet<>();
 
-        shopIds.forEach(shopId ->
+        List<CompletableFuture<Void>> getMinPriceFutures = shopIds.stream().map(shopId ->
                 CompletableFuture
-                        .runAsync(
-                                () -> minPriceSorted.add(priceRetriever.getPrice(itemId, shopId)),
+                        .supplyAsync(
+                                () -> priceRetriever.getPrice(itemId, shopId),
                                 executorService
                         )
-        );
+                        .exceptionally(exception -> null)
+                        .completeOnTimeout(null, 2950, TimeUnit.MILLISECONDS)
+                        .thenAccept(minPrice -> {
+                            if (minPrice != null)
+                                minPriceSorted.add(minPrice);
+                        })
+        ).collect(Collectors.toList());
 
-        try {
-            CompletableFuture
-                    .runAsync(() -> {
-                        while (minPriceSorted.size() < shopIds.size()) {
-                            //просто ждем, когда получим цены со всех магазинов
-                        }
-                    })
-                    .get(2950, TimeUnit.MILLISECONDS);
+        CompletableFuture<Void> allFutures = CompletableFuture.allOf(getMinPriceFutures.toArray(CompletableFuture[]::new));
+        allFutures.join();
+
+        if (!minPriceSorted.isEmpty())
             result = minPriceSorted.first();
-        } catch (TimeoutException e) {
-            if (!minPriceSorted.isEmpty())
-                result = minPriceSorted.first();
-        } catch (ExecutionException | InterruptedException e) {
-            //
-        }
 
         return result;
     }
