@@ -1,8 +1,10 @@
 package course.concurrency.m2_async.cf.min_price;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.NavigableSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -32,10 +34,7 @@ public class PriceAggregator {
     }
 
     public double getMinPrice(long itemId) {
-        Double result = Double.NaN;
-        NavigableSet<Double> minPriceSorted = new ConcurrentSkipListSet<>();
-
-        List<CompletableFuture<Void>> getMinPriceFutures = shopIds.stream().map(shopId ->
+        List<CompletableFuture<Double>> getMinPriceFutures = shopIds.stream().map(shopId ->
                 CompletableFuture
                         .supplyAsync(
                                 () -> priceRetriever.getPrice(itemId, shopId),
@@ -43,18 +42,15 @@ public class PriceAggregator {
                         )
                         .exceptionally(exception -> null)
                         .completeOnTimeout(null, 2950, TimeUnit.MILLISECONDS)
-                        .thenAccept(minPrice -> {
-                            if (minPrice != null)
-                                minPriceSorted.add(minPrice);
-                        })
         ).collect(Collectors.toList());
 
-        CompletableFuture<Void> allFutures = CompletableFuture.allOf(getMinPriceFutures.toArray(CompletableFuture[]::new));
-        allFutures.join();
-
-        if (!minPriceSorted.isEmpty())
-            result = minPriceSorted.first();
-
-        return result;
+        return CompletableFuture.allOf(getMinPriceFutures.toArray(CompletableFuture[]::new))
+                .thenApply(v -> getMinPriceFutures.stream().map(CompletableFuture::join))
+                .thenApply(priceStream -> priceStream
+                        .filter(Objects::nonNull)
+                        .min(Comparator.naturalOrder())
+                )
+                .join()
+                .orElse(Double.NaN);
     }
 }
