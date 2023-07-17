@@ -17,10 +17,10 @@ public class AuctionOptimistic implements Auction {
         Bid actualLatestBid;
         do {
             actualLatestBid = atomicLatestBid.get();
-            if (bid.getPrice() > actualLatestBid.getPrice()) {
-                notifier.sendOutdatedMessage(actualLatestBid);
-            } else return false;
+            if (bid.getPrice() <= actualLatestBid.getPrice())
+                return false;
         } while (!atomicLatestBid.compareAndSet(actualLatestBid, bid));
+        notifier.sendOutdatedMessage(actualLatestBid);
         return true;
     }
 
