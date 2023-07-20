@@ -15,18 +15,16 @@ public class AuctionStoppableOptimistic implements AuctionStoppable {
     private volatile boolean stopped;
 
     public boolean propose(Bid bid) {
-        Bid latestBid = atomicLatestBid.get();
-        boolean bidChanged = false;
-        if (bid.getPrice() > atomicLatestBid.get().getPrice() && !stopped) {
-            // если ставка успешно изменилась или вдруг стала уже неактуальной выходим из цикла
-            while (!bidChanged && bid.getPrice() > atomicLatestBid.get().getPrice())
-                bidChanged = atomicLatestBid.compareAndSet(atomicLatestBid.get(), bid);
-        }
-
-        if (bidChanged)
-            notifier.sendOutdatedMessage(latestBid);
-
-        return bidChanged;
+        if (stopped)
+            return false;
+        Bid actualLatestBid;
+        do {
+            actualLatestBid = atomicLatestBid.get();
+            if (bid.getPrice() <= actualLatestBid.getPrice())
+                return false;
+        } while (!atomicLatestBid.compareAndSet(actualLatestBid, bid));
+        notifier.sendOutdatedMessage(actualLatestBid);
+        return true;
     }
 
     public Bid getLatestBid() {
