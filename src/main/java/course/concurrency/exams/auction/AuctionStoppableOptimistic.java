@@ -17,10 +17,11 @@ public class AuctionStoppableOptimistic implements AuctionStoppable {
 
     public boolean propose(Bid bid) {
         Bid actualLatestBid;
-        boolean[] auctionIsStoppedMarkHolder = new boolean[1];
+        boolean auctionIsStopped;
         do {
-            actualLatestBid = atomicMarkableReferenceBid.get(auctionIsStoppedMarkHolder);
-            if (bid.getPrice() <= actualLatestBid.getPrice() || auctionIsStoppedMarkHolder[0])
+            actualLatestBid = atomicMarkableReferenceBid.getReference();
+            auctionIsStopped = atomicMarkableReferenceBid.isMarked();
+            if (bid.getPrice() <= actualLatestBid.getPrice() || auctionIsStopped)
                 return false;
         } while (!atomicMarkableReferenceBid.compareAndSet(
                 actualLatestBid,
