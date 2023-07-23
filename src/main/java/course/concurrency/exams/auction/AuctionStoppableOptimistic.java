@@ -1,6 +1,6 @@
 package course.concurrency.exams.auction;
 
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicMarkableReference;
 
 public class AuctionStoppableOptimistic implements AuctionStoppable {
 
@@ -10,29 +10,37 @@ public class AuctionStoppableOptimistic implements AuctionStoppable {
         this.notifier = notifier;
     }
 
-    private final AtomicReference<Bid> atomicLatestBid = new AtomicReference<>(new Bid(null, null, 0L));
-
-    private volatile boolean stopped;
+    private final AtomicMarkableReference<Bid> atomicMarkableReferenceBid = new AtomicMarkableReference<>(
+            new Bid(null, null, 0L),
+            false // флаг остановки аукциона и того, что ставка победила
+    );
 
     public boolean propose(Bid bid) {
-        if (stopped)
-            return false;
         Bid actualLatestBid;
+        boolean[] auctionIsStoppedMarkHolder = new boolean[1];
         do {
-            actualLatestBid = atomicLatestBid.get();
-            if (bid.getPrice() <= actualLatestBid.getPrice())
+            actualLatestBid = atomicMarkableReferenceBid.get(auctionIsStoppedMarkHolder);
+            if (bid.getPrice() <= actualLatestBid.getPrice() || auctionIsStoppedMarkHolder[0])
                 return false;
-        } while (!atomicLatestBid.compareAndSet(actualLatestBid, bid));
+        } while (!atomicMarkableReferenceBid.compareAndSet(
+                actualLatestBid,
+                bid,
+                false,
+                false)
+        );
         notifier.sendOutdatedMessage(actualLatestBid);
         return true;
     }
 
     public Bid getLatestBid() {
-        return atomicLatestBid.get();
+        return atomicMarkableReferenceBid.getReference();
     }
 
     public Bid stopAuction() {
-        stopped = true;
-        return atomicLatestBid.get();
+        Bid actualLatestBid;
+        do {
+            actualLatestBid = atomicMarkableReferenceBid.getReference();
+        } while (!atomicMarkableReferenceBid.attemptMark(actualLatestBid, true));
+        return actualLatestBid;
     }
 }

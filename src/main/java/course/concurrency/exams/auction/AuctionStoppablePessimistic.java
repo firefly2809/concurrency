@@ -9,13 +9,13 @@ public class AuctionStoppablePessimistic implements AuctionStoppable {
     }
 
     private volatile Bid latestBid = new Bid(null, null, 0L);
-    private volatile boolean stopped;
+    private boolean stopped;
 
     public boolean propose(Bid bid) {
-        if (bid.getPrice() < latestBid.getPrice() || stopped)
+        if (bid.getPrice() <= latestBid.getPrice() || stopped)
             return false; // сразу отдаем false если ставка меньше последней или аукцион остановлен
         synchronized (this) {
-            if (bid.getPrice() > latestBid.getPrice()) { // еще раз чекаем, что ставку надо поменять
+            if (bid.getPrice() > latestBid.getPrice() || !stopped) { // еще раз чекаем, что ставку надо поменять
                 notifier.sendOutdatedMessage(latestBid);
                 latestBid = bid;
                 return true;
@@ -24,11 +24,11 @@ public class AuctionStoppablePessimistic implements AuctionStoppable {
         }
     }
 
-    public Bid getLatestBid() {
+    public synchronized Bid getLatestBid() {
         return latestBid;
     }
 
-    public Bid stopAuction() {
+    public synchronized Bid stopAuction() {
         stopped = true;
         return latestBid;
     }
